@@ -45,7 +45,7 @@ public class RepositoryImpl implements IRepository {
                 mCurrencyRateCachedDataSource
                         .getActiveCurrencies(),
                 forceCacheRefresh,
-                null);
+                false);
     }
 
     /**
@@ -74,13 +74,13 @@ public class RepositoryImpl implements IRepository {
                 mCurrencyRateCachedDataSource
                         .getCurrencyRate(from, to),
                 forceCacheRefresh,
-                null);
+                false);
     }
 
     private <T> Single<RepositoryResponse<T>> retrieveData(Single<T> readOnlineAndSaveToCacheSingle,
                                                            Single<T> readCacheSingle,
                                                            boolean forceCacheRefresh,
-                                                           Throwable fallbackThrowable) {
+                                                           boolean recursive) {
         if (forceCacheRefresh)
             return readOnlineAndSaveToCacheSingle
                     .map(data -> {
@@ -89,15 +89,17 @@ public class RepositoryImpl implements IRepository {
                         return new RepositoryResponse<>(data, false);
                     })
                     .compose(s ->
-                            fallbackThrowable == null ?
+                            recursive ?
+                                    s :
                                     s.onErrorResumeNext(throwable -> {
                                         Log.w(TAG, "Error receiving online data, trying cache!" + "(" + throwable + ")");
 
                                         return retrieveData(readOnlineAndSaveToCacheSingle,
                                                 readCacheSingle,
                                                 false,
-                                                throwable);
-                                    }) : s);
+                                                true);
+                                    })
+                    );
         else
             // attempting to use cached data
             return readCacheSingle
@@ -107,14 +109,16 @@ public class RepositoryImpl implements IRepository {
                         return new RepositoryResponse<>(data, true);
                     })
                     .compose(s ->
-                            fallbackThrowable == null ?
+                            recursive ?
+                                    s :
                                     s.onErrorResumeNext(throwable -> {
                                         Log.w(TAG, "Error receiving cached data, trying online!" + "(" + throwable + ")");
 
                                         return retrieveData(readOnlineAndSaveToCacheSingle,
                                                 readCacheSingle,
                                                 true,
-                                                throwable);
-                                    }) : s);
+                                                true);
+                                    })
+                    );
     }
 }

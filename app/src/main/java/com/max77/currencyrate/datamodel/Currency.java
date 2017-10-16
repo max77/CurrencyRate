@@ -7,13 +7,15 @@ package com.max77.currencyrate.datamodel;
 public class Currency {
     private String mISOCode = "";
     private String mFullName = "";
+    private int mDigits;
 
     public Currency() {
     }
 
-    public Currency(String ISOCode, String fullName) {
+    public Currency(String ISOCode, String fullName, int digits) {
         mISOCode = ISOCode;
         mFullName = fullName;
+        mDigits = digits;
     }
 
     public String getISOCode() {
@@ -22,6 +24,10 @@ public class Currency {
 
     public String getFullName() {
         return mFullName;
+    }
+
+    public int getDigits() {
+        return mDigits;
     }
 
     @Override

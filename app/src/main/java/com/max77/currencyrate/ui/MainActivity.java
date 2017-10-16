@@ -12,9 +12,13 @@ import android.widget.AdapterView;
 import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.max77.currencyrate.R;
 import com.max77.currencyrate.datamodel.Currency;
+
+import java.util.Date;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements IMainView {
 
@@ -29,6 +33,8 @@ public class MainActivity extends AppCompatActivity implements IMainView {
 
     private MainPresenter mPresenter;
 
+    private boolean isAmountUpdating;
+
     private TextWatcher mAmountTextWatcher = new TextWatcher() {
         @Override
         public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
@@ -42,14 +48,25 @@ public class MainActivity extends AppCompatActivity implements IMainView {
 
         @Override
         public void afterTextChanged(Editable editable) {
-            mPresenter.update();
+            if (isAmountUpdating) {
+                isAmountUpdating = false;
+                return;
+            }
+            mPresenter.update(false);
         }
     };
+
+    private boolean isCurrencyUpdating;
 
     private AdapterView.OnItemSelectedListener mCurrencySpinnerListener = new AdapterView.OnItemSelectedListener() {
         @Override
         public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-            mPresenter.update();
+            if (isCurrencyUpdating) {
+                isCurrencyUpdating = false;
+                return;
+            }
+
+            mPresenter.update(false);
         }
 
         @Override
@@ -67,7 +84,7 @@ public class MainActivity extends AppCompatActivity implements IMainView {
         initControls();
 
         mPresenter = new MainPresenter(this, "SEK", "USD");
-        mPresenter.restoreStateOrInitialize(savedInstanceState);
+        mPresenter.init(savedInstanceState);
     }
 
     private void preventKeypadFromHiding() {
@@ -85,22 +102,52 @@ public class MainActivity extends AppCompatActivity implements IMainView {
         mTargetCurrencyNameSpinner = findViewById(R.id.target_currency);
 
         mRefreshLayout = findViewById(R.id.refreshLayout);
-        mRefreshLayout.setOnRefreshListener(() -> mPresenter.forceUpdate());
+        mRefreshLayout.setOnRefreshListener(() -> mPresenter.update(true));
+
+        mSourceCurrencyAmountInput.addTextChangedListener(mAmountTextWatcher);
+        mTargetCurrencyAmountInput.addTextChangedListener(mAmountTextWatcher);
+
+        mSourceCurrencyNameSpinner.setOnItemSelectedListener(mCurrencySpinnerListener);
+        mTargetCurrencyNameSpinner.setOnItemSelectedListener(mCurrencySpinnerListener);
     }
 
     @Override
-    public MainState getState() {
-        MainState state = new MainState();
+    public void setDate(Date date) {
+        mDateTextView.setText(Util.getPrettyDate(this, date));
+    }
 
+    @Override
+    public void setAmount(boolean target, float amount) {
+        isAmountUpdating = true;
+        (target ? mTargetCurrencyAmountInput : mSourceCurrencyAmountInput)
+                .setText(amount <= 0 ? "" : String.valueOf(amount));
+    }
+
+    @Override
+    public float getAmount(boolean target) {
         try {
-            state.setSourceAmount(Float.valueOf(mSourceCurrencyAmountInput.getText().toString()));
-            state.setTargetAmount(Float.valueOf(mTargetCurrencyAmountInput.getText().toString()));
-            state.getConversionRateInfo().setSourceCurrency(getSelectedCurrency(mSourceCurrencyNameSpinner));
-            state.getConversionRateInfo().setTargetCurrency(getSelectedCurrency(mTargetCurrencyNameSpinner));
+            return Float.valueOf((target ? mTargetCurrencyAmountInput : mSourceCurrencyAmountInput)
+                    .getText().toString());
         } catch (Exception e) {
+            return 0;
         }
+    }
 
-        return state;
+    @Override
+    public void setAvailableCurrencies(List<Currency> currencies) {
+        mSourceCurrencyNameSpinner.setAdapter(new CurrencyNamesSpinnerAdapter(this, currencies));
+        mTargetCurrencyNameSpinner.setAdapter(new CurrencyNamesSpinnerAdapter(this, currencies));
+    }
+
+    @Override
+    public void setCurrencyIdx(boolean target, int idx) {
+        isCurrencyUpdating = true;
+        (target ? mTargetCurrencyNameSpinner : mSourceCurrencyNameSpinner).setSelection(idx);
+    }
+
+    @Override
+    public int getCurrencyIdx(boolean target) {
+        return (target ? mTargetCurrencyNameSpinner : mSourceCurrencyNameSpinner).getSelectedItemPosition();
     }
 
     @Override
@@ -109,57 +156,27 @@ public class MainActivity extends AppCompatActivity implements IMainView {
     }
 
     @Override
+    public void showProgress(boolean show) {
+        mRefreshLayout.setRefreshing(show);
+    }
+
+    @Override
+    public void showError(String message) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+    }
+
+    @Override
     protected void onDestroy() {
         mPresenter.destroy();
         super.onDestroy();
     }
 
-    @Override
-    public void setState(MainState state) {
-        // blocking callbacks to avoid recursion
-        mSourceCurrencyAmountInput.removeTextChangedListener(mAmountTextWatcher);
-        mTargetCurrencyAmountInput.removeTextChangedListener(mAmountTextWatcher);
-
-        mSourceCurrencyNameSpinner.setOnItemSelectedListener(null);
-        mTargetCurrencyNameSpinner.setOnItemSelectedListener(null);
-
-        // setting data
-        mDateTextView.setText(Util.getPrettyDate(this, state.getConversionRateInfo().getDate()));
-
-        mSourceCurrencyAmountInput.setText(String.valueOf(state.getSourceAmount()));
-        mTargetCurrencyAmountInput.setText(String.valueOf(state.getTargetAmount()));
-
-        mSourceCurrencyNameSpinner.setAdapter(new CurrencyNamesSpinnerAdapter(this, state.getAvailableCurrencies()));
-        mTargetCurrencyNameSpinner.setAdapter(new CurrencyNamesSpinnerAdapter(this, state.getAvailableCurrencies()));
-
-        int pos1 = ((CurrencyNamesSpinnerAdapter) mSourceCurrencyNameSpinner.getAdapter())
-                .getPosition(state.getConversionRateInfo().getSourceCurrency());
-
-        mSourceCurrencyNameSpinner.setSelection(pos1);
-
-        int pos2 = ((CurrencyNamesSpinnerAdapter) mTargetCurrencyNameSpinner.getAdapter())
-                .getPosition(state.getConversionRateInfo().getTargetCurrency());
-
-        mTargetCurrencyNameSpinner.setSelection(pos2);
-
-        mSourceCurrencyTextView.setText(getString(R.string.source_rate_text,
-                state.getSourceAmount(),
-                state.getConversionRateInfo().getSourceCurrency().getFullName(),
-                state.getConversionRateInfo().getSourceCurrency().getISOCode()));
-        mTargetCurrencyTextView.setText(getString(R.string.target_rate_text,
-                state.getTargetAmount(),
-                state.getConversionRateInfo().getTargetCurrency().getFullName(),
-                state.getConversionRateInfo().getTargetCurrency().getISOCode()));
-
-        // restoring callbacks
-        mSourceCurrencyAmountInput.addTextChangedListener(mAmountTextWatcher);
-        mTargetCurrencyAmountInput.addTextChangedListener(mAmountTextWatcher);
-
-        mSourceCurrencyNameSpinner.setOnItemSelectedListener(mCurrencySpinnerListener);
-        mTargetCurrencyNameSpinner.setOnItemSelectedListener(mCurrencySpinnerListener);
-    }
-
-    private Currency getSelectedCurrency(Spinner spinner) {
-        return ((CurrencyNamesSpinnerAdapter) spinner.getAdapter()).getItem(spinner.getSelectedItemPosition());
-    }
+//        mSourceCurrencyTextView.setText(getString(R.string.source_rate_text,
+//                state.getSourceAmount(),
+//                state.getConversionRateInfo().getSourceCurrency().getFullName(),
+//                state.getConversionRateInfo().getSourceCurrency().getISOCode()));
+//        mTargetCurrencyTextView.setText(getString(R.string.target_rate_text,
+//                state.getTargetAmount(),
+//                state.getConversionRateInfo().getTargetCurrency().getFullName(),
+//                state.getConversionRateInfo().getTargetCurrency().getISOCode()));
 }

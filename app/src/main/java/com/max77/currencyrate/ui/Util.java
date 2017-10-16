@@ -12,7 +12,7 @@ import java.util.Date;
 class Util {
     private static final long MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
 
-    static boolean areSameDay(Date d1, Date d2) {
+    static boolean isSameBankingDay(Date d1, Date d2) {
         if (d1 == null || d2 == null)
             return false;
 
@@ -20,6 +20,8 @@ class Util {
         long day2 = d2.getTime() / MILLIS_PER_DAY;
 
         return day1 == day2;
+
+        // TODO: holidays/weekends not handled!!!
     }
 
     static String getPrettyDate(Context context, Date d) {
