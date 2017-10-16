@@ -100,7 +100,7 @@ class MainPresenter {
             return;
         }
 
-        if(invalidateCache) {
+        if (invalidateCache) {
             mCurrentState.mAvailableCurrencies = null;
             mCurrentState.mConversionRate = 0;
         }
@@ -196,11 +196,11 @@ class MainPresenter {
                 .map(state -> {
                     if (state.mSourceAmount == 0 && state.mTargetAmount == 0) {
                         state.mSourceAmount = 1.0f;
-                        state.mTargetAmount = roundToDigits(state.mConversionRate, state.mTargetDigits);
+                        state.mTargetAmount = state.mConversionRate;
                     } else if (state.mSourceAmount == 0)
-                        state.mSourceAmount = roundToDigits(state.mTargetAmount / state.mConversionRate, state.mSourceDigits);
+                        state.mSourceAmount = state.mTargetAmount / state.mConversionRate;
                     else if (state.mTargetAmount == 0)
-                        state.mTargetAmount = roundToDigits(state.mSourceAmount * state.mConversionRate, state.mTargetDigits);
+                        state.mTargetAmount = state.mSourceAmount * state.mConversionRate;
 
                     return state;
                 });
@@ -234,11 +234,6 @@ class MainPresenter {
         }
 
         return -1;
-    }
-
-    private float roundToDigits(float x, int digits) {
-        double m = Math.pow(10, digits);
-        return (float) (Math.round(x * m) / m);
     }
 
     private static class State {

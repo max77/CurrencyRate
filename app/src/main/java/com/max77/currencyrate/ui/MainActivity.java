@@ -2,7 +2,6 @@ package com.max77.currencyrate.ui;
 
 import android.content.Context;
 import android.os.Bundle;
-import android.os.PersistableBundle;
 import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.AppCompatActivity;
 import android.text.Editable;
@@ -178,9 +177,9 @@ public class MainActivity extends AppCompatActivity implements IMainView {
     @Override
     public void showRate(Currency source, float sourceAmount, Currency target, float targetAmount) {
         mSourceCurrencyTextView.setText(getString(R.string.source_rate_text,
-                sourceAmount, source.getFullName(), source.getISOCode()));
+                Util.roundToDigits(sourceAmount, source.getDigits()), source.getFullName(), source.getISOCode()));
         mTargetCurrencyTextView.setText(getString(R.string.target_rate_text,
-                targetAmount, target.getFullName(), target.getISOCode()));
+                Util.roundToDigits(targetAmount, target.getDigits()), target.getFullName(), target.getISOCode()));
     }
 
     private class AmountTextWatcher implements TextWatcher {

@@ -3,6 +3,8 @@ package com.max77.currencyrate.ui;
 import android.content.Context;
 import android.text.format.DateFormat;
 
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.util.Date;
 
 /**
@@ -26,5 +28,13 @@ class Util {
 
     static String getPrettyDate(Context context, Date d) {
         return DateFormat.getDateFormat(context).format(d);
+    }
+
+    static String roundToDigits(float x, int digits) {
+        NumberFormat format = DecimalFormat.getInstance();
+        format.setMinimumFractionDigits(0);
+        format.setMaximumFractionDigits(digits);
+
+        return format.format(x);
     }
 }
