@@ -44,8 +44,14 @@ public class CurrenciesDataSource implements ICurrenciesDataSource {
             reader.close();
 
             List<Currency> result = new ArrayList<>();
-            for (CurrencyInfo info : table.infos)
-                result.add(new Currency(info.mCurrencyCode, info.mCurrencyName, info.mDigits));
+            for (CurrencyInfo info : table.infos) {
+                try {
+                    result.add(new Currency(info.mCurrencyCode, info.mCurrencyName,
+                            Integer.valueOf(info.mDigits)));
+                } catch (Exception e) {
+                    Log.w(TAG, e);
+                }
+            }
 
             Log.d(TAG, "Currency list read success");
 
@@ -68,6 +74,6 @@ public class CurrenciesDataSource implements ICurrenciesDataSource {
         String mCurrencyCode;
 
         @Element(name = "CcyMnrUnts", required = false)
-        int mDigits;
+        String mDigits;
     }
 }

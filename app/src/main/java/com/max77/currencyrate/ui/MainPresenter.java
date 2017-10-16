@@ -7,6 +7,7 @@ import com.max77.currencyrate.CurrencyRateApplication;
 import com.max77.currencyrate.datamodel.ConversionRateInfo;
 import com.max77.currencyrate.datamodel.Currency;
 
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -23,7 +24,7 @@ class MainPresenter {
     private static final String TAG = "CURRATE::LOGIC";
     private static final String KEY_SAVED_STATE = "saved_state";
 
-    private State mCurrentState = new State();
+    private State mCurrentState;
     private IMainView mView;
     private CompositeDisposable mRequestDisposable = new CompositeDisposable();
     private String mDefaultSourceISO;
@@ -42,110 +43,137 @@ class MainPresenter {
     void init(Bundle bundle) {
         try {
             mCurrentState = new Gson().fromJson(bundle.getString(KEY_SAVED_STATE), State.class);
+            if (mCurrentState == null)
+                throw new NullPointerException();
+            updateView();
         } catch (Exception e) {
             mCurrentState = new State();
+            applyCurrentState(false);
         }
+    }
 
-        update(false);
+    void saveCurrentState(Bundle bundle) {
+        try {
+            bundle.putString(KEY_SAVED_STATE, new Gson().toJson(mCurrentState));
+        } catch (Exception e) {
+
+        }
     }
 
     void destroy() {
         mRequestDisposable.clear();
     }
 
+    private void updateView() {
+        mView.setAvailableCurrencies(mCurrentState.mAvailableCurrencies);
+        mView.setSourceCurrencyIdx(mCurrentState.mSourceIdx);
+        mView.setTargetCurrencyIdx(mCurrentState.mTargetIdx);
+        mView.setSourceAmount(mCurrentState.mSourceAmount);
+        mView.setTargetAmount(mCurrentState.mTargetAmount);
+        mView.setDate(mCurrentState.mDate);
+        mView.showRate(mCurrentState.mAvailableCurrencies.get(mCurrentState.mSourceIdx), mCurrentState.mSourceAmount,
+                mCurrentState.mAvailableCurrencies.get(mCurrentState.mTargetIdx), mCurrentState.mTargetAmount);
+    }
+
     void update(boolean invalidateCache) {
-        State newState = new State(mCurrentState);
-        newState.mSourceCurrencyIdx = mView.getCurrencyIdx(false);
-        newState.mTargetCurrencyIdx = mView.getCurrencyIdx(true);
-        newState.mSourceAmount = mView.getAmount(false);
-        newState.mTargetAmount = mView.getAmount(true);
+        int sourceIdx = mView.getSourceCurrencyIdx();
+        int targetIdx = mView.getTargetCurrencyIdx();
+        float sourceAmount = mView.getSourceAmount();
+        float targetAmount = mView.getTargetAmount();
+
+        if (sourceAmount <= 0) {
+            mCurrentState.mSourceAmount = -1;
+            updateView();
+            return;
+        } else if (targetAmount <= 0) {
+            mCurrentState.mTargetAmount = -1;
+            updateView();
+            return;
+        }
 
         // mark fields to recalculate
-        if (newState.mSourceCurrencyIdx != mCurrentState.mSourceCurrencyIdx) {
-            newState.mConversionRate = 0;
-            newState.mTargetAmount = 0;
-        } else if (newState.mTargetCurrencyIdx != mCurrentState.mTargetCurrencyIdx) {
-            newState.mConversionRate = 0;
-            newState.mSourceAmount = 0;
-        } else if (newState.mSourceAmount != mCurrentState.mSourceAmount)
-            newState.mTargetAmount = 0;
-        else if (newState.mTargetAmount != mCurrentState.mTargetAmount)
-            newState.mSourceAmount = 0;
+        if (sourceIdx != mCurrentState.mSourceIdx) {
+            mCurrentState.mSourceIdx = sourceIdx;
+            mCurrentState.mConversionRate = 0;
+            mCurrentState.mTargetAmount = 0;
+        } else if (targetIdx != mCurrentState.mTargetIdx) {
+            mCurrentState.mTargetIdx = targetIdx;
+            mCurrentState.mConversionRate = 0;
+            mCurrentState.mSourceAmount = 0;
+        } else if (sourceAmount != mCurrentState.mSourceAmount) {
+            mCurrentState.mSourceAmount = sourceAmount;
+            mCurrentState.mTargetAmount = 0;
+        } else if (targetAmount != mCurrentState.mTargetAmount) {
+            mCurrentState.mTargetAmount = targetAmount;
+            mCurrentState.mSourceAmount = 0;
+        }
 
+        applyCurrentState(invalidateCache);
+    }
+
+    private void applyCurrentState(boolean invalidateCache) {
         invalidateCache |= !Util.isSameBankingDay(mCurrentState.mDate, new Date());
 
-        mRequestDisposable.add(fillState(newState, invalidateCache)
+        mRequestDisposable.add(fillCurrentState(invalidateCache)
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
                 .doOnSubscribe(disposable ->
                         mView.showProgress(true))
-                .subscribe((state, error) -> {
+                .subscribe((state1, error) -> {
                     mView.showProgress(false);
                     if (error != null)
                         mView.showError(error.getLocalizedMessage());
                     else {
-                        updateView(state);
-                        mCurrentState = state;
+                        updateView();
                     }
                 })
         );
     }
 
-    private void updateView(State newState) {
-        if (newState.mAvailableCurrencies != mCurrentState.mAvailableCurrencies)
-            mView.setAvailableCurrencies(newState.mAvailableCurrencies);
-
-        if (newState.mSourceCurrencyIdx != mCurrentState.mSourceCurrencyIdx)
-            mView.setCurrencyIdx(false, newState.mSourceCurrencyIdx);
-        if (newState.mTargetCurrencyIdx != mCurrentState.mTargetCurrencyIdx)
-            mView.setCurrencyIdx(true, newState.mTargetCurrencyIdx);
-
-        if (newState.mSourceAmount != mCurrentState.mSourceAmount)
-            mView.setAmount(false, newState.mSourceAmount);
-        if (newState.mTargetAmount != mCurrentState.mTargetAmount)
-            mView.setAmount(true, newState.mTargetAmount);
-
-        mView.setDate(newState.mDate);
-    }
-
-    private Single<State> fillState(State stateToFill, boolean invalidateCache) {
-        return Single.just(stateToFill)
+    private Single<State> fillCurrentState(boolean invalidateCache) {
+        return Single.just(mCurrentState)
                 // loading currency list if needed
                 .flatMap(state ->
                         state.mAvailableCurrencies == null ?
                                 getRepository().getActiveCurrencies(invalidateCache)
                                         .map(response -> {
                                             state.mAvailableCurrencies = response.getPayload();
+                                            sortCurrencies(state.mAvailableCurrencies);
                                             return state;
                                         }) :
                                 Single.just(state))
                 // checking if source/target currency is set
                 .map(state -> {
-                    if (state.mSourceCurrencyIdx < 0)
-                        state.mSourceCurrencyIdx = findCurrencyIdxByISOCode(state.mAvailableCurrencies, mDefaultSourceISO);
-                    if (state.mSourceCurrencyIdx < 0)
-                        state.mSourceCurrencyIdx = 0;
+                    if (state.mSourceIdx < 0)
+                        state.mSourceIdx = findCurrencyIdxByISOCode(state.mAvailableCurrencies, mDefaultSourceISO);
+                    if (state.mSourceIdx < 0)
+                        state.mSourceIdx = 0;
 
-                    if (state.mTargetCurrencyIdx < 0)
-                        state.mTargetCurrencyIdx = findCurrencyIdxByISOCode(state.mAvailableCurrencies, mDefaultTargetISO);
-                    if (state.mTargetCurrencyIdx < 0)
-                        state.mTargetCurrencyIdx = state.mAvailableCurrencies.size() - 1;
+                    if (state.mTargetIdx < 0)
+                        state.mTargetIdx = findCurrencyIdxByISOCode(state.mAvailableCurrencies, mDefaultTargetISO);
+                    if (state.mTargetIdx < 0)
+                        state.mTargetIdx = state.mAvailableCurrencies.size() - 1;
+
+                    if (state.mSourceIdx == state.mTargetIdx)
+                        state.mConversionRate = 1.0f;
 
                     return state;
                 })
                 // loading conversion rate if not set
                 .flatMap(state ->
                         state.mConversionRate <= 0 ?
-                                getRepository().getConversionRateInfo(state.mAvailableCurrencies.get(state.mSourceCurrencyIdx),
-                                        state.mAvailableCurrencies.get(state.mTargetCurrencyIdx), invalidateCache)
+                                getRepository().getConversionRateInfo(state.mAvailableCurrencies.get(state.mSourceIdx),
+                                        state.mAvailableCurrencies.get(state.mTargetIdx), invalidateCache)
                                         .map(response -> {
                                             ConversionRateInfo cri = response.getPayload();
 
                                             state.mConversionRate = cri.getConversionRate();
                                             state.mDate = cri.getDate();
                                             // a bit of paranoia
-                                            state.mSourceCurrencyIdx = findCurrencyIdxByISOCode(state.mAvailableCurrencies, cri.getSourceCurrency().getISOCode());
-                                            state.mTargetCurrencyIdx = findCurrencyIdxByISOCode(state.mAvailableCurrencies, cri.getTargetCurrency().getISOCode());
+                                            state.mSourceIdx = findCurrencyIdxByISOCode(state.mAvailableCurrencies, cri.getSourceCurrency().getISOCode());
+                                            state.mTargetIdx = findCurrencyIdxByISOCode(state.mAvailableCurrencies, cri.getTargetCurrency().getISOCode());
+                                            state.mSourceDigits = cri.getSourceCurrency().getDigits();
+                                            state.mTargetDigits = cri.getTargetCurrency().getDigits();
 
                                             return state;
                                         }) :
@@ -154,14 +182,35 @@ class MainPresenter {
                 .map(state -> {
                     if (state.mSourceAmount == 0 && state.mTargetAmount == 0) {
                         state.mSourceAmount = 1.0f;
-                        state.mTargetAmount = roundToDigits(state.mConversionRate, state.;
+                        state.mTargetAmount = roundToDigits(state.mConversionRate, state.mTargetDigits);
                     } else if (state.mSourceAmount == 0)
-                        state.mSourceAmount = state.mTargetAmount / state.mConversionRate;
+                        state.mSourceAmount = roundToDigits(state.mTargetAmount / state.mConversionRate, state.mSourceDigits);
                     else if (state.mTargetAmount == 0)
-                        state.mTargetAmount = state.mSourceAmount * state.mConversionRate;
+                        state.mTargetAmount = roundToDigits(state.mSourceAmount * state.mConversionRate, state.mTargetDigits);
 
                     return state;
                 });
+    }
+
+    private void sortCurrencies(List<Currency> availableCurrencies) {
+        Collections.sort(availableCurrencies, (c1, c2) -> {
+            if (c1 == null && c2 == null)
+                return 0;
+
+            if (c1 == null)
+                return -1;
+
+            if (c2 == null)
+                return 1;
+
+            if (c1.getFullName() != null && c2.getFullName() != null)
+                return c1.getFullName().compareTo(c2.getFullName());
+
+            if (c1.getISOCode() != null && c2.getISOCode() != null)
+                return c1.getISOCode().compareTo(c2.getISOCode());
+
+            return 0;
+        });
     }
 
     private int findCurrencyIdxByISOCode(List<Currency> currencies, String iso) {
@@ -180,24 +229,13 @@ class MainPresenter {
 
     private static class State {
         List<Currency> mAvailableCurrencies;
-        int mSourceCurrencyIdx;
-        int mTargetCurrencyIdx;
+        int mSourceIdx = -1;
+        int mTargetIdx = -1;
         float mSourceAmount;
         float mTargetAmount;
         float mConversionRate;
+        int mSourceDigits;
+        int mTargetDigits;
         Date mDate;
-
-        State() {
-        }
-
-        State(State other) {
-            this.mAvailableCurrencies = other.mAvailableCurrencies;
-            this.mSourceCurrencyIdx = other.mSourceCurrencyIdx;
-            this.mTargetCurrencyIdx = other.mTargetCurrencyIdx;
-            this.mSourceAmount = other.mSourceAmount;
-            this.mTargetAmount = other.mTargetAmount;
-            this.mConversionRate = other.mConversionRate;
-            this.mDate = other.mDate;
-        }
     }
 }

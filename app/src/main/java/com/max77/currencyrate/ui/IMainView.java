@@ -14,19 +14,29 @@ import java.util.List;
 interface IMainView {
     void setDate(Date date);
 
-    void setAmount(boolean target, float amount);
+    void setSourceAmount(float amount);
 
-    float getAmount(boolean target);
+    void setTargetAmount(float amount);
+
+    float getSourceAmount();
+
+    float getTargetAmount();
 
     void setAvailableCurrencies(List<Currency> currencies);
 
-    void setCurrencyIdx(boolean target, int idx);
+    void setSourceCurrencyIdx(int idx);
 
-    int getCurrencyIdx(boolean target);
+    void setTargetCurrencyIdx(int idx);
+
+    int getSourceCurrencyIdx();
+
+    int getTargetCurrencyIdx();
 
     Context getContext();
 
     void showProgress(boolean show);
 
     void showError(String message);
+
+    void showRate(Currency source, float sourceAmount, Currency target, float targetAmount);
 }

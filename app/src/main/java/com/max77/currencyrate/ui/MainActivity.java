@@ -2,6 +2,7 @@ package com.max77.currencyrate.ui;
 
 import android.content.Context;
 import android.os.Bundle;
+import android.os.PersistableBundle;
 import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.AppCompatActivity;
 import android.text.Editable;
@@ -26,54 +27,17 @@ public class MainActivity extends AppCompatActivity implements IMainView {
     private TextView mDateTextView;
     private TextView mSourceCurrencyTextView;
     private TextView mTargetCurrencyTextView;
-    private EditText mSourceCurrencyAmountInput;
-    private EditText mTargetCurrencyAmountInput;
-    private Spinner mSourceCurrencyNameSpinner;
-    private Spinner mTargetCurrencyNameSpinner;
+    private EditText mSourceAmountInput;
+    private EditText mTargetAmountInput;
+    private Spinner mSourceNameSpinner;
+    private Spinner mTargetNameSpinner;
 
     private MainPresenter mPresenter;
 
-    private boolean isAmountUpdating;
-
-    private TextWatcher mAmountTextWatcher = new TextWatcher() {
-        @Override
-        public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
-
-        }
-
-        @Override
-        public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
-
-        }
-
-        @Override
-        public void afterTextChanged(Editable editable) {
-            if (isAmountUpdating) {
-                isAmountUpdating = false;
-                return;
-            }
-            mPresenter.update(false);
-        }
-    };
-
-    private boolean isCurrencyUpdating;
-
-    private AdapterView.OnItemSelectedListener mCurrencySpinnerListener = new AdapterView.OnItemSelectedListener() {
-        @Override
-        public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-            if (isCurrencyUpdating) {
-                isCurrencyUpdating = false;
-                return;
-            }
-
-            mPresenter.update(false);
-        }
-
-        @Override
-        public void onNothingSelected(AdapterView<?> adapterView) {
-
-        }
-    };
+    private AmountTextWatcher mSourceAmountWatcher = new AmountTextWatcher();
+    private AmountTextWatcher mTargetAmountWatcher = new AmountTextWatcher();
+    private OneShotSpinnerListener mSourceListener = new OneShotSpinnerListener();
+    private OneShotSpinnerListener mTargetListener = new OneShotSpinnerListener();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -96,19 +60,21 @@ public class MainActivity extends AppCompatActivity implements IMainView {
         mDateTextView = findViewById(R.id.date);
         mSourceCurrencyTextView = findViewById(R.id.source_text);
         mTargetCurrencyTextView = findViewById(R.id.target_text);
-        mSourceCurrencyAmountInput = findViewById(R.id.source_amount);
-        mTargetCurrencyAmountInput = findViewById(R.id.target_amount);
-        mSourceCurrencyNameSpinner = findViewById(R.id.source_currency);
-        mTargetCurrencyNameSpinner = findViewById(R.id.target_currency);
-
+        mSourceAmountInput = findViewById(R.id.source_amount);
+        mTargetAmountInput = findViewById(R.id.target_amount);
+        mSourceNameSpinner = findViewById(R.id.source_currency);
+        mTargetNameSpinner = findViewById(R.id.target_currency);
         mRefreshLayout = findViewById(R.id.refreshLayout);
+    }
+    
+    @Override
+    protected void onResume() {
+        super.onResume();
         mRefreshLayout.setOnRefreshListener(() -> mPresenter.update(true));
-
-        mSourceCurrencyAmountInput.addTextChangedListener(mAmountTextWatcher);
-        mTargetCurrencyAmountInput.addTextChangedListener(mAmountTextWatcher);
-
-        mSourceCurrencyNameSpinner.setOnItemSelectedListener(mCurrencySpinnerListener);
-        mTargetCurrencyNameSpinner.setOnItemSelectedListener(mCurrencySpinnerListener);
+        mSourceAmountInput.addTextChangedListener(mSourceAmountWatcher);
+        mTargetAmountInput.addTextChangedListener(mTargetAmountWatcher);
+        mSourceNameSpinner.setOnItemSelectedListener(mSourceListener);
+        mTargetNameSpinner.setOnItemSelectedListener(mTargetListener);
     }
 
     @Override
@@ -117,37 +83,75 @@ public class MainActivity extends AppCompatActivity implements IMainView {
     }
 
     @Override
-    public void setAmount(boolean target, float amount) {
-        isAmountUpdating = true;
-        (target ? mTargetCurrencyAmountInput : mSourceCurrencyAmountInput)
-                .setText(amount <= 0 ? "" : String.valueOf(amount));
+    public void setSourceAmount(float amount) {
+        if (amount <= 0) {
+            mSourceAmountWatcher.lockForUpdate();
+            mSourceAmountInput.setText("");
+        } else if (amount != getSourceAmount()) {
+            mSourceAmountWatcher.lockForUpdate();
+            mSourceAmountInput.setText(String.valueOf(amount));
+        }
     }
 
     @Override
-    public float getAmount(boolean target) {
+    public void setTargetAmount(float amount) {
+        if (amount <= 0) {
+            mTargetAmountWatcher.lockForUpdate();
+            mTargetAmountInput.setText("");
+        } else if (amount != getTargetAmount()) {
+            mTargetAmountWatcher.lockForUpdate();
+            mTargetAmountInput.setText(String.valueOf(amount));
+        }
+    }
+
+    @Override
+    public float getSourceAmount() {
         try {
-            return Float.valueOf((target ? mTargetCurrencyAmountInput : mSourceCurrencyAmountInput)
-                    .getText().toString());
+            return Float.valueOf(mSourceAmountInput.getText().toString());
         } catch (Exception e) {
-            return 0;
+            return -1;
+        }
+    }
+
+    @Override
+    public float getTargetAmount() {
+        try {
+            return Float.valueOf(mTargetAmountInput.getText().toString());
+        } catch (Exception e) {
+            return -1;
         }
     }
 
     @Override
     public void setAvailableCurrencies(List<Currency> currencies) {
-        mSourceCurrencyNameSpinner.setAdapter(new CurrencyNamesSpinnerAdapter(this, currencies));
-        mTargetCurrencyNameSpinner.setAdapter(new CurrencyNamesSpinnerAdapter(this, currencies));
+        mSourceNameSpinner.setAdapter(new CurrencyNamesSpinnerAdapter(this, currencies));
+        mTargetNameSpinner.setAdapter(new CurrencyNamesSpinnerAdapter(this, currencies));
     }
 
     @Override
-    public void setCurrencyIdx(boolean target, int idx) {
-        isCurrencyUpdating = true;
-        (target ? mTargetCurrencyNameSpinner : mSourceCurrencyNameSpinner).setSelection(idx);
+    public void setSourceCurrencyIdx(int idx) {
+        if (mSourceNameSpinner.getSelectedItemPosition() != idx) {
+            mSourceListener.lockForUpdate();
+            mSourceNameSpinner.setSelection(idx);
+        }
     }
 
     @Override
-    public int getCurrencyIdx(boolean target) {
-        return (target ? mTargetCurrencyNameSpinner : mSourceCurrencyNameSpinner).getSelectedItemPosition();
+    public void setTargetCurrencyIdx(int idx) {
+        if (mTargetNameSpinner.getSelectedItemPosition() != idx) {
+            mTargetListener.lockForUpdate();
+            mTargetNameSpinner.setSelection(idx);
+        }
+    }
+
+    @Override
+    public int getSourceCurrencyIdx() {
+        return mSourceNameSpinner.getSelectedItemPosition();
+    }
+
+    @Override
+    public int getTargetCurrencyIdx() {
+        return mTargetNameSpinner.getSelectedItemPosition();
     }
 
     @Override
@@ -171,12 +175,68 @@ public class MainActivity extends AppCompatActivity implements IMainView {
         super.onDestroy();
     }
 
-//        mSourceCurrencyTextView.setText(getString(R.string.source_rate_text,
-//                state.getSourceAmount(),
-//                state.getConversionRateInfo().getSourceCurrency().getFullName(),
-//                state.getConversionRateInfo().getSourceCurrency().getISOCode()));
-//        mTargetCurrencyTextView.setText(getString(R.string.target_rate_text,
-//                state.getTargetAmount(),
-//                state.getConversionRateInfo().getTargetCurrency().getFullName(),
-//                state.getConversionRateInfo().getTargetCurrency().getISOCode()));
+    @Override
+    public void onSaveInstanceState(Bundle outState, PersistableBundle outPersistentState) {
+        mPresenter.saveCurrentState(outState);
+        super.onSaveInstanceState(outState, outPersistentState);
+    }
+
+    @Override
+    public void showRate(Currency source, float sourceAmount, Currency target, float targetAmount) {
+        mSourceCurrencyTextView.setText(getString(R.string.source_rate_text,
+                sourceAmount, source.getFullName(), source.getISOCode()));
+        mTargetCurrencyTextView.setText(getString(R.string.target_rate_text,
+                targetAmount, target.getFullName(), target.getISOCode()));
+    }
+
+    private class AmountTextWatcher implements TextWatcher {
+        private boolean isUpdating;
+
+        @Override
+        public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+
+        }
+
+        @Override
+        public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+
+        }
+
+        @Override
+        public void afterTextChanged(Editable editable) {
+            if (isUpdating) {
+                isUpdating = false;
+                return;
+            }
+
+            mPresenter.update(false);
+        }
+
+        void lockForUpdate() {
+            isUpdating = true;
+        }
+    }
+
+    private class OneShotSpinnerListener implements AdapterView.OnItemSelectedListener {
+        private boolean isUpdating;
+
+        @Override
+        public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
+            if (isUpdating) {
+                isUpdating = false;
+                return;
+            }
+
+            mPresenter.update(false);
+        }
+
+        @Override
+        public void onNothingSelected(AdapterView<?> adapterView) {
+            isUpdating = false;
+        }
+
+        void lockForUpdate() {
+            isUpdating = true;
+        }
+    }
 }
