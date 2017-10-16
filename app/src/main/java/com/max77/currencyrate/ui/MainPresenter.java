@@ -100,6 +100,11 @@ class MainPresenter {
             return;
         }
 
+        if(invalidateCache) {
+            mCurrentState.mAvailableCurrencies = null;
+            mCurrentState.mConversionRate = 0;
+        }
+
         // mark fields to recalculate
         if (sourceIdx != mCurrentState.mSourceIdx) {
             mCurrentState.mSourceIdx = sourceIdx;
