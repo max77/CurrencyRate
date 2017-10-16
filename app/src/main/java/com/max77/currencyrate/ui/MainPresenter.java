@@ -1,6 +1,7 @@
 package com.max77.currencyrate.ui;
 
-import android.os.Bundle;
+import android.content.Context;
+import android.content.SharedPreferences;
 
 import com.google.gson.Gson;
 import com.max77.currencyrate.CurrencyRateApplication;
@@ -22,7 +23,8 @@ import io.reactivex.schedulers.Schedulers;
 
 class MainPresenter {
     private static final String TAG = "CURRATE::LOGIC";
-    private static final String KEY_SAVED_STATE = "saved_state";
+    private static final String PREF_CONFIG = "config";
+    private static final String KEY_STATE = "state";
 
     private State mCurrentState;
     private IMainView mView;
@@ -40,9 +42,10 @@ class MainPresenter {
         return ((CurrencyRateApplication) mView.getContext().getApplicationContext()).getRepository();
     }
 
-    void init(Bundle bundle) {
+    void init() {
         try {
-            mCurrentState = new Gson().fromJson(bundle.getString(KEY_SAVED_STATE), State.class);
+            SharedPreferences prefs = mView.getContext().getSharedPreferences(PREF_CONFIG, Context.MODE_PRIVATE);
+            mCurrentState = new Gson().fromJson(prefs.getString(KEY_STATE, null), State.class);
             if (mCurrentState == null)
                 throw new NullPointerException();
             updateView();
@@ -52,9 +55,12 @@ class MainPresenter {
         }
     }
 
-    void saveCurrentState(Bundle bundle) {
+    private void saveCurrentState() {
         try {
-            bundle.putString(KEY_SAVED_STATE, new Gson().toJson(mCurrentState));
+            mView.getContext().getSharedPreferences(PREF_CONFIG, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(KEY_STATE, new Gson().toJson(mCurrentState))
+                    .apply();
         } catch (Exception e) {
 
         }
@@ -62,6 +68,7 @@ class MainPresenter {
 
     void destroy() {
         mRequestDisposable.clear();
+        saveCurrentState();
     }
 
     private void updateView() {
@@ -71,8 +78,10 @@ class MainPresenter {
         mView.setSourceAmount(mCurrentState.mSourceAmount);
         mView.setTargetAmount(mCurrentState.mTargetAmount);
         mView.setDate(mCurrentState.mDate);
-        mView.showRate(mCurrentState.mAvailableCurrencies.get(mCurrentState.mSourceIdx), mCurrentState.mSourceAmount,
-                mCurrentState.mAvailableCurrencies.get(mCurrentState.mTargetIdx), mCurrentState.mTargetAmount);
+
+        if (mCurrentState.mSourceAmount > 0 && mCurrentState.mTargetAmount > 0)
+            mView.showRate(mCurrentState.mAvailableCurrencies.get(mCurrentState.mSourceIdx), mCurrentState.mSourceAmount,
+                    mCurrentState.mAvailableCurrencies.get(mCurrentState.mTargetIdx), mCurrentState.mTargetAmount);
     }
 
     void update(boolean invalidateCache) {

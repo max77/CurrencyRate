@@ -48,7 +48,7 @@ public class MainActivity extends AppCompatActivity implements IMainView {
         initControls();
 
         mPresenter = new MainPresenter(this, "SEK", "USD");
-        mPresenter.init(savedInstanceState);
+        mPresenter.init();
     }
 
     private void preventKeypadFromHiding() {
@@ -66,7 +66,7 @@ public class MainActivity extends AppCompatActivity implements IMainView {
         mTargetNameSpinner = findViewById(R.id.target_currency);
         mRefreshLayout = findViewById(R.id.refreshLayout);
     }
-    
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -173,12 +173,6 @@ public class MainActivity extends AppCompatActivity implements IMainView {
     protected void onDestroy() {
         mPresenter.destroy();
         super.onDestroy();
-    }
-
-    @Override
-    public void onSaveInstanceState(Bundle outState, PersistableBundle outPersistentState) {
-        mPresenter.saveCurrentState(outState);
-        super.onSaveInstanceState(outState, outPersistentState);
     }
 
     @Override
